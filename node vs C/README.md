@@ -25,6 +25,6 @@ Benchmarks ran using `wrk` (12 threads, 400 connections) over a VPN.
 Compile the multi-threaded server:
 
 ```bash
-gcc -O3 -pthread server_mt.c -o server_mt
+gcc -O3 -pthread mt_server.c -o server_mt
 ./server_mt
 ```
