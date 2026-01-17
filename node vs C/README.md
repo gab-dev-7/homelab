@@ -1,6 +1,6 @@
 # Benchmark: C vs Node.js
 
-An experiment to test the limits of raw C against the V8 JavaScript engine. Read the full story on [gawindlin.com](https://gawindlin.com/blog/fith-post/).
+An experiment to test the limits of raw C against the V8 JavaScript engine. Read the full story on [gawindlin.com](https://gawindlin.com/blog/101-post/).
 
 ## The Contenders
 
