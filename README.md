@@ -41,7 +41,9 @@ This repository is for documentation purposes. Environment variables have been s
 2. Review `Caddyfile` for routing configurations.
 3. `.env` file is required for `POSTGRES_USER`, `POSTGRES_PASSWORD`, and domain configurations.
 
+## Architecture Diagram
 
+```mermaid
 graph TD
     User((User via Tailscale)) -->|HTTPS| Caddy[Caddy Reverse Proxy]
     Caddy -->|Auth/Security| CrowdSec{CrowdSec IPS}
@@ -51,11 +53,9 @@ graph TD
         Apps -->|Query| Postgres[(Shared Postgres 16)]
         Apps -->|Cache| Redis((Redis))
     end
-
+    
     subgraph "Monitoring & Security"
         AdGuard[AdGuard Home] -->|DNS Filtering| User
         Uptime[Uptime Kuma] -->|Monitors| Apps
         BatteryScript[Battery Monitor] -->|Push Status| Uptime
-    end  
-
----
+    end
