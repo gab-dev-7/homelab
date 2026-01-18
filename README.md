@@ -31,9 +31,7 @@ The services run via Docker Compose, utilizing Caddy as a reverse proxy and Crow
 
 ## Benchmarks
 
-This repository contains performance comparisons and event loop tests.
-
-- **Node.js vs C:** Comparative benchmarks testing the Node.js event loop against various server implementations written in C.
+*Work in Progress:* I am currently testing the overhead of the Node.js event loop vs. raw C implementations under high concurrent load on this specific mobile CPU architecture.
 
 ## Usage
 
