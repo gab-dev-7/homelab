@@ -1,0 +1,63 @@
+{
+    email gawindlin@gmail.com
+    local_certs
+    
+    # GLOBAL LOGGING CONFIGURATION
+    # This creates a log file that CrowdSec will watch.
+    log {
+        output file /var/log/caddy/access.log {
+            roll_size 10mb
+            roll_keep 5
+        }
+        format json
+    }
+}
+
+# 1. AdGuard Home (The Interface)
+dns.lab.gawindlin.com {
+    reverse_proxy adguard:3000
+}
+
+# 2. Vikunja (Tasks)
+tasks.lab.gawindlin.com {
+    reverse_proxy vikunja:3456
+}
+
+# 3. Wallos (Finances)
+finance.lab.gawindlin.com {
+    reverse_proxy wallos:80
+}
+
+# 4. Linkwarden (Bookmarks)
+links.lab.gawindlin.com {
+    reverse_proxy linkwarden:3000
+}
+
+# 5. The Dashboard
+dashboard.lab.gawindlin.com {
+    reverse_proxy homepage:3000
+}
+
+# 6. Uptime Kuma (Monitoring)
+# Access this to set up alerts if your site goes down
+monitor.lab.gawindlin.com {
+    reverse_proxy uptime-kuma:3001
+}
+
+# 7. OwnCloud (File Server)
+files.lab.gawindlin.com {
+    reverse_proxy owncloud:8080 {
+        # OwnCloud needs these for the app to trust the proxy
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+}
+
+# Catch-all
+:80 {
+    # Return 404 for random scanning
+    respond "Not Found" 404
+}
+
+

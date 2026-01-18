@@ -1,0 +1,6 @@
+.env
+*.log
+uptime-kuma/kuma.db*
+uptime-kuma/docker-tls/
+uptime-kuma/upload/
+uptime-kuma/screenshots/

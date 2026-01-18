@@ -1,0 +1,212 @@
+services:
+  # --------------------------------------------------------------------------------
+  # CORE INFRASTRUCTURE (Database, Cache, Proxy, Security)
+  # --------------------------------------------------------------------------------
+
+  # 1. Reverse Proxy
+  caddy:
+    image: caddy:latest
+    container_name: caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - CADDY_INGRESS_NETWORKS=lab_net
+    networks:
+      - lab_net
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+      - caddy_logs:/var/log/caddy
+
+  # 2. Shared Database (PostgreSQL 16)
+  # Replaces MariaDB. Acts as the brain for Vikunja, OwnCloud, etc.
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # We create multiple databases on startup
+      POSTGRES_DB: ${POSTGRES_DB} 
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Script to create separate DBs for services automatically
+      - ./init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
+    networks:
+      - lab_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 3. Shared Cache (Redis)
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    networks:
+      - lab_net
+    volumes:
+      - redis_data:/data
+
+  # 4. Security / Intrusion Prevention
+  crowdsec:
+    image: crowdsecurity/crowdsec:latest
+    container_name: crowdsec
+    restart: unless-stopped
+    environment:
+      Collections: "crowdsecurity/caddy"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - crowdsec_db:/var/lib/crowdsec/data
+      - crowdsec_config:/etc/crowdsec
+      - ./crowdsec/acquis.yaml:/etc/crowdsec/acquis.yaml
+      - caddy_logs:/var/log/caddy:ro
+    networks:
+      - lab_net
+
+  # --------------------------------------------------------------------------------
+  # NETWORK SERVICES
+  # --------------------------------------------------------------------------------
+
+  # 5. AdGuard Home (DNS Blocker)
+  # CRITICAL: See Step 4 below about Port 53 conflicts on Ubuntu
+  adguard:
+    image: adguard/adguardhome
+    container_name: adguard
+    restart: unless-stopped
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+      # - "853:853/tcp" # Enable if you want DNS-over-TLS later
+      # Web UI is internal only, exposed via Caddy
+    volumes:
+      - adguard_work:/opt/adguardhome/work
+      - adguard_conf:/opt/adguardhome/conf
+    networks:
+      - lab_net
+
+  # --------------------------------------------------------------------------------
+  # APPLICATIONS
+  # --------------------------------------------------------------------------------
+
+  # 6. OwnCloud (File Server) - Now on Postgres
+  owncloud:
+    image: owncloud/server:latest
+    container_name: owncloud
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      - OWNCLOUD_DOMAIN=files.${ROOT_DOMAIN}
+      - OWNCLOUD_TRUSTED_DOMAINS=files.${ROOT_DOMAIN}
+      - OWNCLOUD_DB_TYPE=pgsql
+      - OWNCLOUD_DB_NAME=owncloud
+      - OWNCLOUD_DB_USERNAME=${POSTGRES_USER}
+      - OWNCLOUD_DB_PASSWORD=${POSTGRES_PASSWORD}
+      - OWNCLOUD_DB_HOST=postgres
+      - OWNCLOUD_ADMIN_USERNAME=${OWNCLOUD_ADMIN_USER}
+      - OWNCLOUD_ADMIN_PASSWORD=${OWNCLOUD_ADMIN_PASSWORD}
+      - OWNCLOUD_REDIS_ENABLED=true
+      - OWNCLOUD_REDIS_HOST=redis
+    volumes:
+      - owncloud_files:/mnt/data
+    networks:
+      - lab_net
+
+  # 7. Vikunja (To-Do List)
+  # Using the "all-in-one" image to save RAM, but connecting to external Postgres
+  vikunja:
+    image: vikunja/vikunja
+    container_name: vikunja
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - VIKUNJA_DATABASE_HOST=postgres
+      - VIKUNJA_DATABASE_PASSWORD=${POSTGRES_PASSWORD}
+      - VIKUNJA_DATABASE_TYPE=postgres
+      - VIKUNJA_DATABASE_USER=${POSTGRES_USER}
+      - VIKUNJA_DATABASE_DATABASE=vikunja
+      - VIKUNJA_SERVICE_PUBLICURL=https://tasks.${ROOT_DOMAIN}
+    volumes:
+      - vikunja_files:/app/vikunja/files
+    networks:
+      - lab_net
+
+  # 8. Wallos (Subscription Tracker) - SQLite (Built-in)
+  wallos:
+    image: bellamy/wallos:latest
+    container_name: wallos
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - wallos_db:/var/www/html/db
+      - wallos_logos:/var/www/html/images/uploads/logos
+    networks:
+      - lab_net
+
+  # 9. Linkwarden (Bookmark Manager)
+  linkwarden:
+    image: ghcr.io/linkwarden/linkwarden:latest
+    container_name: linkwarden
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/linkwarden
+      - REDIS_URL=redis://redis:6379
+      - NEXTAUTH_URL=https://links.lab.gawindlin.com
+      - NEXTAUTH_SECRET=${LINKWARDEN_SECRET}
+      # - VIRUSTOTAL_API_KEY= # Optional
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - linkwarden_data:/data/data
+    networks:
+      - lab_net
+
+  # 10. Uptime Kuma (Monitoring)
+  uptime-kuma:
+    image: louislam/uptime-kuma:latest
+    container_name: uptime-kuma
+    restart: unless-stopped
+    volumes:
+      - uptime_kuma_data:/app/data
+    networks:
+      - lab_net
+
+# --------------------------------------------------------------------------------
+# NETWORKS & VOLUMES
+# --------------------------------------------------------------------------------
+networks:
+  lab_net:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:
+  caddy_logs:
+  crowdsec_db:
+  crowdsec_config:
+  postgres_data:
+  redis_data:
+  owncloud_files:
+  adguard_work:
+  adguard_conf:
+  vikunja_files:
+  wallos_db:
+  wallos_logos:
+  linkwarden_data:
+  uptime_kuma_data:
